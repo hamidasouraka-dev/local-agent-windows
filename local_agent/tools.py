@@ -14,6 +14,7 @@ from pathlib import Path
 from urllib.parse import quote_plus
 
 import httpx
+from duckduckgo_search import DDGS
 
 from .config import (
     ALLOW_FETCH_URL,
@@ -83,11 +84,14 @@ class ToolContext:
         return ok in ("oui", "o", "yes", "y")
 
     def _safe_path(self, relative_path: str) -> Path:
-        rel = (relative_path or "").strip().replace("/", "\\")
-        if not rel or rel.startswith("..") or Path(rel).is_absolute():
+        rel = (relative_path or "").strip()
+        rel_path = Path(rel)
+        if not rel or rel_path.is_absolute():
             raise ValueError(
                 "Chemin invalide : utilise un chemin relatif au workspace, sans .. ni chemin absolu."
             )
+        if any(p == ".." for p in rel_path.parts):
+            raise ValueError("Chemin invalide : '..' interdit.")
         full = (WORKSPACE_ROOT / rel).resolve()
         try:
             full.relative_to(WORKSPACE_ROOT)
@@ -181,48 +185,62 @@ class ToolContext:
             ensure_ascii=False,
         )
 
-    def web_search(self, query: str) -> str:
+    def _cache_get(self, key: str, ttl: int) -> str | None:
+        if ttl <= 0:
+            return None
+        now = monotonic()
+        if key in self._web_search_cache:
+            ts, cached = self._web_search_cache[key]
+            if now - ts < ttl:
+                self._web_search_cache.move_to_end(key)
+                return cached
+            del self._web_search_cache[key]
+        return None
+
+    def _cache_put(self, key: str, value: str, ttl: int) -> None:
+        if ttl <= 0:
+            return
+        self._web_search_cache[key] = (monotonic(), value)
+        self._web_search_cache.move_to_end(key)
+        while len(self._web_search_cache) > WEB_SEARCH_CACHE_MAX_ENTRIES:
+            self._web_search_cache.popitem(last=False)
+
+    def web_search(self, query: str, max_results: int = 6) -> str:
+        """Recherche web textuelle via DuckDuckGo Search avec cache LRU."""
         q = (query or "").strip()
         if not q:
             return json.dumps({"error": "Requête vide."}, ensure_ascii=False)
-        key = q.lower()
+        key = f"text::{q.lower()}::{max(1, min(max_results, 20))}"
         ttl = WEB_SEARCH_CACHE_TTL_SEC
-        if ttl > 0:
-            now = monotonic()
-            if key in self._web_search_cache:
-                ts, cached = self._web_search_cache[key]
-                if now - ts < ttl:
-                    self._web_search_cache.move_to_end(key)
-                    return cached
-                del self._web_search_cache[key]
-        url = f"https://api.duckduckgo.com/?q={quote_plus(q)}&format=json&no_html=1"
+        cached = self._cache_get(key, ttl)
+        if cached is not None:
+            return cached
         try:
-            r = httpx.get(url, timeout=15.0, follow_redirects=True)
-            r.raise_for_status()
-            data = r.json()
+            with DDGS() as ddgs:
+                results = list(ddgs.text(q, max_results=max(1, min(max_results, 20))))
+            out = json.dumps({"query": q, "results": results}, ensure_ascii=False)
         except Exception as e:
-            return json.dumps({"error": str(e)}, ensure_ascii=False)
-        abstract = (data.get("AbstractText") or "").strip()
-        answer = (data.get("Answer") or "").strip()
-        related = data.get("RelatedTopics") or []
-        snippets: list[str] = []
-        for item in related[:8]:
-            if isinstance(item, dict) and item.get("Text"):
-                snippets.append(str(item["Text"])[:300])
-        out = json.dumps(
-            {
-                "query": q,
-                "abstract": abstract,
-                "answer": answer,
-                "related_snippets": snippets,
-            },
-            ensure_ascii=False,
-        )
-        if ttl > 0:
-            self._web_search_cache[key] = (monotonic(), out)
-            self._web_search_cache.move_to_end(key)
-            while len(self._web_search_cache) > WEB_SEARCH_CACHE_MAX_ENTRIES:
-                self._web_search_cache.popitem(last=False)
+            out = json.dumps({"error": str(e)}, ensure_ascii=False)
+        self._cache_put(key, out, ttl)
+        return out
+
+    def news_search(self, query: str, max_results: int = 5) -> str:
+        """Recherche actualités via DuckDuckGo News avec cache LRU."""
+        q = (query or "").strip()
+        if not q:
+            return json.dumps({"error": "Requête vide."}, ensure_ascii=False)
+        key = f"news::{q.lower()}::{max(1, min(max_results, 20))}"
+        ttl = WEB_SEARCH_CACHE_TTL_SEC
+        cached = self._cache_get(key, ttl)
+        if cached is not None:
+            return cached
+        try:
+            with DDGS() as ddgs:
+                results = list(ddgs.news(q, max_results=max(1, min(max_results, 20))))
+            out = json.dumps({"query": q, "results": results}, ensure_ascii=False)
+        except Exception as e:
+            out = json.dumps({"error": str(e)}, ensure_ascii=False)
+        self._cache_put(key, out, ttl)
         return out
 
     def fetch_url(self, url: str) -> str:
@@ -248,9 +266,9 @@ class ToolContext:
             )
             r.raise_for_status()
             raw = r.content
-            if len(raw) > MAX_FETCH_URL_BYTES:
-                raw = raw[:MAX_FETCH_URL_BYTES]
             text = raw.decode("utf-8", errors="replace")
+            if len(raw) > MAX_FETCH_URL_BYTES:
+                text = text[:MAX_FETCH_URL_BYTES]
             text = re.sub(r"(?is)<script[^>]*>.*?</script>", " ", text)
             text = re.sub(r"(?is)<style[^>]*>.*?</style>", " ", text)
             text = re.sub(r"<[^>]+>", " ", text)
@@ -369,17 +387,19 @@ class ToolContext:
         except Exception as e:
             return json.dumps({"error": str(e)}, ensure_ascii=False)
 
-    def append_memory_note(self, note: str) -> str:
-        """Mémoire persistante sur le disque (dossier workspace/memory)."""
+    def append_memory_note(self, note: str, tag: str = "projet") -> str:
+        """Ajoute une note persistante dans le journal mémoire avec un tag optionnel."""
         text = (note or "").strip()
         if not text:
             return json.dumps({"error": "Note vide."}, ensure_ascii=False)
+        safe_tag = (tag or "projet").strip() or "projet"
+        safe_tag = re.sub(r"[\r\n\[\]]+", " ", safe_tag).strip() or "projet"
         if len(text) > 100_000:
             text = text[:100_000] + "\n... [tronqué]"
         try:
             p = self._memory_journal_path()
             stamp = datetime.now().isoformat(timespec="seconds")
-            block = f"\n## {stamp}\n{text}\n"
+            block = f"\n## {stamp} [{safe_tag}]\n{text}\n"
             block_b = block.encode("utf-8")
             prev = p.read_bytes() if p.exists() else b""
             if len(prev) + len(block_b) > MAX_MEMORY_JOURNAL_BYTES:
@@ -396,12 +416,17 @@ class ToolContext:
                     f.write(block_b)
             else:
                 head = "# Journal mémoire (assistant local)\n\n".encode("utf-8")
-                body = f"## {stamp}\n{text}\n".encode("utf-8")
+                body = f"## {stamp} [{safe_tag}]\n{text}\n".encode("utf-8")
                 with p.open("wb") as f:
                     f.write(head)
                     f.write(body)
             return json.dumps(
-                {"ok": True, "path": str(p.relative_to(WORKSPACE_ROOT)), "bytes": p.stat().st_size},
+                {
+                    "ok": True,
+                    "tag": safe_tag,
+                    "path": str(p.relative_to(WORKSPACE_ROOT)),
+                    "bytes": p.stat().st_size,
+                },
                 ensure_ascii=False,
             )
         except ValueError as e:
@@ -409,7 +434,8 @@ class ToolContext:
         except OSError as e:
             return json.dumps({"error": str(e)}, ensure_ascii=False)
 
-    def read_memory_notes(self, max_chars: int | None = None) -> str:
+    def read_memory_notes(self, max_chars: int | None = None, tag: str | None = None) -> str:
+        """Lit le journal mémoire, avec filtre optionnel sur le tag."""
         lim = max_chars if max_chars is not None else MAX_MEMORY_READ_CHARS
         lim = max(1_000, min(lim, MAX_MEMORY_READ_CHARS))
         try:
@@ -420,10 +446,21 @@ class ToolContext:
                     ensure_ascii=False,
                 )
             raw = p.read_text(encoding="utf-8", errors="replace")
+            if tag:
+                wanted = f"[{str(tag).strip()}]"
+                lines = raw.splitlines()
+                kept: list[str] = []
+                capture = False
+                for line in lines:
+                    if line.startswith("## "):
+                        capture = wanted in line
+                    if capture:
+                        kept.append(line)
+                raw = "\n".join(kept).strip() or "(aucune note pour ce tag)"
             if len(raw) > lim:
                 raw = "... [début tronqué]\n" + raw[-lim:]
             return json.dumps(
-                {"path": str(p.relative_to(WORKSPACE_ROOT)), "content": raw},
+                {"path": str(p.relative_to(WORKSPACE_ROOT)), "tag": tag, "content": raw},
                 ensure_ascii=False,
             )
         except ValueError as e:
@@ -445,7 +482,19 @@ class ToolContext:
             if name == "run_powershell":
                 return self.run_powershell(args.get("command", ""))
             if name == "web_search":
-                return self.web_search(args.get("query", ""))
+                mr = args.get("max_results", 6)
+                try:
+                    mr_int = int(mr)
+                except (TypeError, ValueError):
+                    mr_int = 6
+                return self.web_search(args.get("query", ""), mr_int)
+            if name == "news_search":
+                mr = args.get("max_results", 5)
+                try:
+                    mr_int = int(mr)
+                except (TypeError, ValueError):
+                    mr_int = 5
+                return self.news_search(args.get("query", ""), mr_int)
             if name == "fetch_url":
                 return self.fetch_url(args.get("url", ""))
             if name == "send_smtp_email":
@@ -463,7 +512,7 @@ class ToolContext:
             if name == "open_browser_url":
                 return self.open_browser_url(args.get("url", ""))
             if name == "append_memory_note":
-                return self.append_memory_note(args.get("note", ""))
+                return self.append_memory_note(args.get("note", ""), str(args.get("tag", "projet")))
             if name == "read_memory_notes":
                 mc = args.get("max_chars")
                 mc_int: int | None = None
@@ -472,7 +521,9 @@ class ToolContext:
                         mc_int = int(mc)
                     except (ValueError, TypeError):
                         mc_int = None
-                return self.read_memory_notes(mc_int)
+                tag = args.get("tag")
+                tag_s = str(tag).strip() if tag is not None and str(tag).strip() else None
+                return self.read_memory_notes(mc_int, tag_s)
         except ValueError as e:
             return json.dumps({"error": str(e)}, ensure_ascii=False)
         return json.dumps({"error": f"Outil inconnu : {name}"}, ensure_ascii=False)

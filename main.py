@@ -41,6 +41,16 @@ def _read_multiline_until_fin() -> str:
     return "\n".join(lines).strip()
 
 
+def _print_help() -> None:
+    """Affiche les commandes disponibles du REPL."""
+    print("Commandes disponibles :")
+    print("  /help       Affiche cette aide")
+    print("  /new        Efface l'historique de conversation")
+    print("  /memory     Affiche le journal mémoire persistant")
+    print("  /paste      Saisie multiligne (fin avec /fin)")
+    print("  /quit       Quitte l'agent")
+
+
 def main() -> None:
     if hasattr(sys.stdout, "reconfigure"):
         try:
@@ -74,7 +84,7 @@ def main() -> None:
     print("  WhatsApp   : open_whatsapp_compose (wa.me — tu confirmes l’envoi dans l’app)")
     if AGENT_OWNER_NAME:
         print(f"  Créateur   : {AGENT_OWNER_NAME}")
-    print("  Commandes : /quit sortir, /new nouvelle conversation, /paste texte long (fin = ligne /fin)")
+    print("  Commandes : /help, /memory, /quit, /new, /paste (fin = ligne /fin)")
     print()
 
     try:
@@ -105,6 +115,12 @@ def main() -> None:
         if line.lower() in ("/new", "/clear"):
             agent.clear_history()
             print("Historique effacé.")
+            continue
+        if line.lower() == "/help":
+            _print_help()
+            continue
+        if line.lower() == "/memory":
+            print(agent._ctx.read_memory_notes())
             continue
         if line.lower() in ("/paste", "/long", "/multiline"):
             try:

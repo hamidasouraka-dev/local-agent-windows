@@ -10,6 +10,7 @@ from .config import (
     AGENT_MAX_TOOL_ROUNDS,
     OLLAMA_BASE_URL,
     OLLAMA_CRITIC_MODEL,
+    OLLAMA_MAX_HISTORY_MESSAGES,
     OLLAMA_MODEL,
     OLLAMA_NUM_CTX,
     OLLAMA_REQUEST_TIMEOUT_SEC,
@@ -112,7 +113,10 @@ class OllamaAgent:
         return r.json()
 
     def _run_tool_rounds(self, user_text: str, max_tool_rounds: int) -> str:
+        """Exécute les tours d'outils avec historique borné pour éviter l'explosion contexte."""
         system = primary_system_ollama(WORKSPACE_ROOT)
+        if len(self._history) > OLLAMA_MAX_HISTORY_MESSAGES:
+            del self._history[:-OLLAMA_MAX_HISTORY_MESSAGES]
         messages: list[dict[str, Any]] = [
             {"role": "system", "content": system},
             *self._history,

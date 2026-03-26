@@ -80,6 +80,7 @@ OLLAMA_REQUEST_TIMEOUT_SEC = float(
     os.environ.get("OLLAMA_REQUEST_TIMEOUT_SEC", "600").strip() or "600"
 )
 OLLAMA_NUM_CTX = _int_env("OLLAMA_NUM_CTX", 0)
+OLLAMA_MAX_HISTORY_MESSAGES = max(4, _int_env("OLLAMA_MAX_HISTORY_MESSAGES", 48))
 
 SELF_EVAL_ENABLED = os.environ.get("SELF_EVAL", "1").strip().lower() in (
     "1",
@@ -107,7 +108,7 @@ ALLOW_FETCH_URL = os.environ.get("ALLOW_FETCH_URL", "0").strip().lower() in (
     "yes",
     "oui",
 )
-MAX_FETCH_URL_BYTES = _int_env("MAX_FETCH_URL_BYTES", 900_000)
+MAX_FETCH_URL_BYTES = _int_env("MAX_FETCH_URL_BYTES", 500_000)
 FETCH_URL_TIMEOUT_SEC = float(
     os.environ.get("FETCH_URL_TIMEOUT_SEC", "25").strip() or "25"
 )

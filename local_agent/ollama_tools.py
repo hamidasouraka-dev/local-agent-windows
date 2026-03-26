@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from .config import ALLOW_FETCH_URL, ALLOW_OPEN_BROWSER, ALLOW_SMTP_SEND
+from .config import ALLOW_FETCH_URL, ALLOW_OPEN_BROWSER, ALLOW_POWERSHELL, ALLOW_SMTP_SEND
 
 # Schémas compatibles API chat Ollama / Groq OpenAI (outils type « function »).
 OLLAMA_TOOLS: list[dict[str, Any]] = [
@@ -92,6 +92,21 @@ OLLAMA_TOOLS: list[dict[str, Any]] = [
             },
         },
     },
+    {
+        "type": "function",
+        "function": {
+            "name": "news_search",
+            "description": "Recherche d'actualités via DuckDuckGo News.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "query": {"type": "string"},
+                    "max_results": {"type": "integer", "description": "Nombre max de résultats (défaut 5)."},
+                },
+                "required": ["query"],
+            },
+        },
+    },
 ]
 
 _MEMORY_APPEND_TOOL: dict[str, Any] = {
@@ -106,6 +121,7 @@ _MEMORY_APPEND_TOOL: dict[str, Any] = {
             "type": "object",
             "properties": {
                 "note": {"type": "string", "description": "Texte à mémoriser (clair et concis)."},
+                "tag": {"type": "string", "description": "Tag optionnel (défaut: projet)."},
             },
             "required": ["note"],
         },
@@ -123,6 +139,10 @@ _MEMORY_READ_TOOL: dict[str, Any] = {
                 "max_chars": {
                     "type": "integer",
                     "description": "Optionnel : nombre max de caractères (défaut config).",
+                },
+                "tag": {
+                    "type": "string",
+                    "description": "Optionnel : filtre les notes portant ce tag exact.",
                 },
             },
         },
@@ -212,6 +232,8 @@ def agent_function_tools() -> list[dict[str, Any]]:
     out = list(OLLAMA_TOOLS)
     out.append(_MEMORY_APPEND_TOOL)
     out.append(_MEMORY_READ_TOOL)
+    if not ALLOW_POWERSHELL:
+        out = [t for t in out if ((t.get("function") or {}).get("name") != "run_powershell")]
     if ALLOW_FETCH_URL:
         out.append(_FETCH_URL_TOOL)
     if ALLOW_SMTP_SEND:
