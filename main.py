@@ -28,6 +28,42 @@ from local_agent.config import (
 )
 from local_agent.groq_agent import GroqAgent
 from local_agent.ollama_agent import OllamaAgent
+import httpx
+
+# === AUTO-DETECT: Le modèle supporte-t-il les outils? ===
+USE_SIMPLE_MODE = False
+OLLAMA_URL = "http://127.0.0.1:11434"
+
+def check_tools_support():
+    """Test si le modèle accepte les outils"""
+    global USE_SIMPLE_MODE
+    try:
+        client = httpx.Client(timeout=30.0)
+        # Test simple avec le modèle
+        response = client.post(
+            f"{OLLAMA_URL}/api/chat",
+            json={
+                "model": OLLAMA_MODEL,
+                "messages": [{"role": "user", "content": "Dis juste 'ok'"}],
+                "stream": False
+            }
+        )
+        client.close()
+        if response.status_code == 200:
+            print(f"✓ Modèle {OLLAMA_MODEL} OK")
+        else:
+            print(f"⚠ Erreur {response.status_code}, mode simple")
+            USE_SIMPLE_MODE = True
+    except Exception as e:
+        print(f"⚠ Mode simple: {e}")
+        USE_SIMPLE_MODE = True
+
+# Test au démarrage si Ollama
+if AGENT_BACKEND == "ollama":
+    check_tools_support()
+
+# Mode simple (sans outils) si le modèle ne supporte pas les tools
+USE_SIMPLE_MODE = False
 
 
 def _read_multiline_until_fin() -> str:
