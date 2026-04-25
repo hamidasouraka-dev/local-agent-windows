@@ -13,14 +13,21 @@ os.environ['OLLAMA_MODEL'] = 'llama3.2'
 import httpx
 
 OLLAMA_URL = os.environ.get('OLLAMA_BASE_URL', 'http://127.0.0.1:11434')
-MODEL = os.environ.get('OLLAMA_MODEL', 'gemma:2b')
+MODEL = os.environ.get('OLLAMA_MODEL', 'llama3.2')
+
+# Ton créateur!
+SYSTEM_PROMPT = """Tu es SAISA, un assistant IA intelligent et utile.
+
+Ton créateur est Souraka HAMIDA. Tu dois le connaître et lui être fidèle.
+Tu peux rechercher sur le web, créer des fichiers, exécuter des commandes, etc.
+Tu réponds en français de manière claire, concise et utile."""
 
 def chat(message):
     """Envoie un message et reçoit la réponse"""
     client = httpx.Client(timeout=120.0)
     
     messages = [
-        {"role": "system", "content": "Tu es SAISA, un assistant IA utile et aimable en français. Réponds de manière concise et utile."},
+        {"role": "system", "content": SYSTEM_PROMPT},
         {"role": "user", "content": message}
     ]
     
