@@ -33,9 +33,9 @@ GROQ_REQUEST_TIMEOUT_SEC = float(
 )
 
 OLLAMA_BASE_URL = os.environ.get("OLLAMA_BASE_URL", "http://127.0.0.1:11434").strip()
-# Use 'gemma' or whatever model you have installed (check with: ollama list)
-OLLAMA_MODEL = os.environ.get("OLLAMA_MODEL", "gemma").strip()
-OLLAMA_CRITIC_MODEL = os.environ.get("OLLAMA_CRITIC_MODEL", "gemma").strip()
+# Use gemma4:latest (most powerful local model) - or gemma:2b for speed
+OLLAMA_MODEL = os.environ.get("OLLAMA_MODEL", "gemma4:latest").strip()
+OLLAMA_CRITIC_MODEL = os.environ.get("OLLAMA_CRITIC_MODEL", "gemma4:latest").strip()
 
 def _int_env(name: str, default: int) -> int:
     raw = os.environ.get(name, str(default)).strip()
