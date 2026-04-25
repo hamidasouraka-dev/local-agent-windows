@@ -33,8 +33,9 @@ GROQ_REQUEST_TIMEOUT_SEC = float(
 )
 
 OLLAMA_BASE_URL = os.environ.get("OLLAMA_BASE_URL", "http://127.0.0.1:11434").strip()
-OLLAMA_MODEL = os.environ.get("OLLAMA_MODEL", "qwen2.5:7b").strip()
-OLLAMA_CRITIC_MODEL = os.environ.get("OLLAMA_CRITIC_MODEL", "").strip()
+# Default to gemma4 (most powerful local model)
+OLLAMA_MODEL = os.environ.get("OLLAMA_MODEL", "gemma4:2b").strip()
+OLLAMA_CRITIC_MODEL = os.environ.get("OLLAMA_CRITIC_MODEL", "gemma4:2b").strip()
 
 def _int_env(name: str, default: int) -> int:
     raw = os.environ.get(name, str(default)).strip()
@@ -153,3 +154,67 @@ MAX_MEMORY_READ_CHARS = _int_env("MAX_MEMORY_READ_CHARS", 220_000)
 MAX_READ_BYTES = _int_env("MAX_READ_BYTES", 450_000)
 MAX_SHELL_OUTPUT = _int_env("MAX_SHELL_OUTPUT", 28_000)
 SHELL_TIMEOUT_SEC = 120
+
+# ============ NOUVELLES CONFIGURATIONS POUR AGENT PUISSANT ============
+
+# Mode autonome - permet à l'agent de fonctionner sans intervention humaine
+AUTONOMOUS_MODE = os.environ.get("AUTONOMOUS_MODE", "0").strip().lower() in (
+    "1",
+    "true",
+    "yes",
+    "oui",
+)
+
+# Surveillance système - permet l'accès aux métriques système
+ALLOW_SYSTEM_MONITOR = os.environ.get("ALLOW_SYSTEM_MONITOR", "1").strip().lower() in (
+    "1",
+    "true",
+    "yes",
+    "oui",
+)
+
+# Accès Docker - permet de gérer les conteneurs
+ALLOW_DOCKER = os.environ.get("ALLOW_DOCKER", "0").strip().lower() in (
+    "1",
+    "true",
+    "yes",
+    "oui",
+)
+
+# Accès Git - permet de gérer les dépôt Git
+ALLOW_GIT = os.environ.get("ALLOW_GIT", "1").strip().lower() in (
+    "1",
+    "true",
+    "yes",
+    "oui",
+)
+
+# Planification de tâches (cron-like)
+ALLOW_SCHEDULER = os.environ.get("ALLOW_SCHEDULER", "0").strip().lower() in (
+    "1",
+    "true",
+    "yes",
+    "oui",
+)
+
+# Nombre max de tours autonomes sans intervention
+AUTONOMOUS_MAX_TURNS = max(10, _int_env("AUTONOMOUS_MAX_TURNS", 100))
+
+# Apprentissage automatique - l'agent apprend de ses erreurs
+LEARNING_MODE = os.environ.get("LEARNING_MODE", "1").strip().lower() in (
+    "1",
+    "true",
+    "yes",
+    "oui",
+)
+
+# Fichier de mémoire apprise
+LEARNING_MEMORY_FILE = os.environ.get(
+    "LEARNING_MEMORY_FILE", "memory/learned.json"
+).strip()
+
+# Nom de l'agent (pour personalisation)
+AGENT_NAME = os.environ.get("AGENT_NAME", "LocalAgent").strip()
+
+# Temperature plus haute pour la créativité
+OLLAMA_TEMPERATURE = max(0.0, min(2.0, _float_env("OLLAMA_TEMPERATURE", 0.7)))

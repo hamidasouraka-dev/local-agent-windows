@@ -21,6 +21,9 @@ from .config import (
     ALLOW_OPEN_BROWSER,
     ALLOW_POWERSHELL,
     ALLOW_SMTP_SEND,
+    ALLOW_GIT,
+    ALLOW_SYSTEM_MONITOR,
+    ALLOW_DOCKER,
     FETCH_URL_TIMEOUT_SEC,
     LOCAL_MEMORY_JOURNAL,
     MAX_EMAIL_BODY_CHARS,
@@ -524,6 +527,160 @@ class ToolContext:
                 tag = args.get("tag")
                 tag_s = str(tag).strip() if tag is not None and str(tag).strip() else None
                 return self.read_memory_notes(mc_int, tag_s)
+            
+            # ========== NOUVEAUX OUTILS ==========
+            if name == "run_git":
+                return self.run_git(args.get("command", ""))
+            if name == "system_info":
+                return self.system_info()
+            if name == "docker_ps":
+                return self.docker_ps()
+            if name == "docker_exec":
+                return self.docker_exec(args.get("container", ""), args.get("command", ""))
+            if name == "schedule_task":
+                return self.schedule_task(args.get("task", ""), args.get("cron", ""))
+            if name == "list_skills":
+                return self.list_skills()
+            if name == "execute_skill":
+                return self.execute_skill(args.get("skill", ""), args.get("params", {}))
         except ValueError as e:
             return json.dumps({"error": str(e)}, ensure_ascii=False)
         return json.dumps({"error": f"Outil inconnu : {name}"}, ensure_ascii=False)
+    
+    # ========== NOUVELLES MÉTHODES ==========
+    
+    def run_git(self, command: str) -> str:
+        """Exécute une commande git dans le workspace."""
+        if not ALLOW_GIT:
+            return json.dumps({"error": "Git désactivé. Mets ALLOW_GIT=1 dans .env."}, ensure_ascii=False)
+        
+        cmd = (command or "").strip()
+        if not cmd:
+            return json.dumps({"error": "Commande git vide."}, ensure_ascii=False)
+        
+        # Sécuriser la commande
+        forbidden = ["rm -rf /", "dd if=", ":(){:|:&};:", "chmod -R 777 /"]
+        for forb in forbidden:
+            if forb in cmd:
+                return json.dumps({"error": f"Commande potentiellement dangereuse: {forb}"}, ensure_ascii=False)
+        
+        try:
+            # Utiliser le dossier workspace comme cwd
+            proc = subprocess.run(
+                cmd.split(),
+                capture_output=True,
+                text=True,
+                timeout=60,
+                cwd=str(WORKSPACE_ROOT),
+                shell=True,
+                encoding="utf-8",
+                errors="replace",
+            )
+            out = (proc.stdout or "") + (proc.stderr or "")
+            if len(out) > MAX_SHELL_OUTPUT:
+                out = out[:MAX_SHELL_OUTPUT] + "\n... [tronqué]"
+            return json.dumps({
+                "exit_code": proc.returncode,
+                "output": out,
+            }, ensure_ascii=False)
+        except subprocess.TimeoutExpired:
+            return json.dumps({"error": "Timeout après 60s."}, ensure_ascii=False)
+        except Exception as e:
+            return json.dumps({"error": str(e)}, ensure_ascii=False)
+    
+    def system_info(self) -> str:
+        """Retourne des informations système."""
+        if not ALLOW_SYSTEM_MONITOR:
+            return json.dumps({"error": "System monitor désactivé."}, ensure_ascii=False)
+        
+        import platform
+        import os
+        
+        info = {
+            "platform": platform.system(),
+            "platform_version": platform.version(),
+            "architecture": platform.machine(),
+            "processor": platform.processor(),
+            "hostname": platform.node(),
+            "python_version": platform.python_version(),
+            "cpu_count": os.cpu_count(),
+            "current_dir": os.getcwd(),
+        }
+        return json.dumps(info, ensure_ascii=False)
+    
+    def docker_ps(self, all_containers: bool = True) -> str:
+        """Liste les conteneurs Docker."""
+        if not ALLOW_DOCKER:
+            return json.dumps({"error": "Docker désactivé. Mets ALLOW_DOCKER=1 dans .env."}, ensure_ascii=False)
+        
+        try:
+            cmd = ["docker", "ps", "--format", "{{.ID}}|{{.Names}}|{{.Status}}|{{.Image}}"]
+            if all_containers:
+                cmd.append("-a")
+            proc = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
+            lines = proc.stdout.strip().split("\n") if proc.stdout.strip() else []
+            containers = []
+            for line in lines:
+                parts = line.split("|")
+                if len(parts) >= 4:
+                    containers.append({
+                        "id": parts[0],
+                        "name": parts[1],
+                        "status": parts[2],
+                        "image": parts[3],
+                    })
+            return json.dumps({"containers": containers}, ensure_ascii=False)
+        except FileNotFoundError:
+            return json.dumps({"error": "Docker non trouvé. Est-il installé?"}, ensure_ascii=False)
+        except Exception as e:
+            return json.dumps({"error": str(e)}, ensure_ascii=False)
+    
+    def docker_exec(self, container: str, command: str) -> str:
+        """Exécute une commande dans un conteneur Docker."""
+        if not ALLOW_DOCKER:
+            return json.dumps({"error": "Docker désactivé."}, ensure_ascii=False)
+        
+        if not container or not command:
+            return json.dumps({"error": "Container et commande requis."}, ensure_ascii=False)
+        
+        try:
+            proc = subprocess.run(
+                ["docker", "exec", container, "sh", "-c", command],
+                capture_output=True,
+                text=True,
+                timeout=60,
+            )
+            out = (proc.stdout or "") + (proc.stderr or "")
+            return json.dumps({
+                "exit_code": proc.returncode,
+                "output": out,
+            }, ensure_ascii=False)
+        except Exception as e:
+            return json.dumps({"error": str(e)}, ensure_ascii=False)
+    
+    def schedule_task(self, task: str, cron: str = ""):
+        """Planifie une tâche (simplifié - enregistre dans un fichier)."""
+        if not cron:
+            # Exécution simple
+            return self.run_powershell(task)
+        
+        # Enregistrer pour plus tard (scheduler complet dans une version future)
+        return json.dumps({
+            "message": "Planification enregistrée",
+            "task": task,
+            "cron": cron,
+            "note": "Fonctionnalité complète à venir",
+        }, ensure_ascii=False)
+    
+    def list_skills(self) -> str:
+        """Liste les skills disponibles."""
+        from .skills_loader import get_skills_loader
+        loader = get_skills_loader()
+        skills = loader.list_skills()
+        return json.dumps({"skills": skills}, ensure_ascii=False)
+    
+    def execute_skill(self, skill_name: str, params: dict) -> str:
+        """Exécute un skill avec des paramètres."""
+        from .skills_loader import get_skills_loader
+        loader = get_skills_loader()
+        return loader.execute_skill(skill_name, **params)

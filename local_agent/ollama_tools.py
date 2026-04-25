@@ -2,7 +2,15 @@ from __future__ import annotations
 
 from typing import Any
 
-from .config import ALLOW_FETCH_URL, ALLOW_OPEN_BROWSER, ALLOW_POWERSHELL, ALLOW_SMTP_SEND
+from .config import (
+    ALLOW_FETCH_URL,
+    ALLOW_OPEN_BROWSER,
+    ALLOW_POWERSHELL,
+    ALLOW_SMTP_SEND,
+    ALLOW_GIT,
+    ALLOW_SYSTEM_MONITOR,
+    ALLOW_DOCKER,
+)
 
 # Schémas compatibles API chat Ollama / Groq OpenAI (outils type « function »).
 OLLAMA_TOOLS: list[dict[str, Any]] = [
@@ -227,6 +235,93 @@ _OPEN_BROWSER_TOOL: dict[str, Any] = {
     },
 }
 
+# ========== NOUVEAUX OUTILS ==========
+
+_GIT_TOOL: dict[str, Any] = {
+    "type": "function",
+    "function": {
+        "name": "run_git",
+        "description": "Exécute une commande git dans le workspace. Utilise des commandes simples comme 'git status', 'git log --oneline -5', 'git branch -a'.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "command": {"type": "string", "description": "Commande git à exécuter."}
+            },
+            "required": ["command"],
+        },
+    },
+}
+
+_SYSTEM_INFO_TOOL: dict[str, Any] = {
+    "type": "function",
+    "function": {
+        "name": "system_info",
+        "description": "Retourne des informations sur le système (OS, version, architecture, etc.).",
+        "parameters": {
+            "type": "object",
+            "properties": {},
+        },
+    },
+}
+
+_DOCKER_PS_TOOL: dict[str, Any] = {
+    "type": "function",
+    "function": {
+        "name": "docker_ps",
+        "description": "Liste les conteneurs Docker actifs ou tous les conteneurs.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "all_containers": {"type": "boolean", "description": "Inclure les conteneurs stoppés."}
+            },
+        },
+    },
+}
+
+_DOCKER_EXEC_TOOL: dict[str, Any] = {
+    "type": "function",
+    "function": {
+        "name": "docker_exec",
+        "description": "Exécute une commande dans un conteneur Docker运行.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "container": {"type": "string", "description": "Nom ou ID du conteneur."},
+                "command": {"type": "string", "description": "Commande à exécuter."}
+            },
+            "required": ["container", "command"],
+        },
+    },
+}
+
+_LIST_SKILLS_TOOL: dict[str, Any] = {
+    "type": "function",
+    "function": {
+        "name": "list_skills",
+        "description": "Liste tous les skills disponibles dans le système.",
+        "parameters": {
+            "type": "object",
+            "properties": {},
+        },
+    },
+}
+
+_EXECUTE_SKILL_TOOL: dict[str, Any] = {
+    "type": "function",
+    "function": {
+        "name": "execute_skill",
+        "description": "Exécute un skill prédéfini avec des paramètres.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "skill_name": {"type": "string", "description": "Nom du skill à exécuter."},
+                "params": {"type": "object", "description": "Paramètres du skill."}
+            },
+            "required": ["skill_name"],
+        },
+    },
+}
+
 
 def agent_function_tools() -> list[dict[str, Any]]:
     out = list(OLLAMA_TOOLS)
@@ -241,4 +336,18 @@ def agent_function_tools() -> list[dict[str, Any]]:
     out.append(_WHATSAPP_TOOL)
     if ALLOW_OPEN_BROWSER:
         out.append(_OPEN_BROWSER_TOOL)
+    
+    # Ajouter les nouveaux outils
+    if ALLOW_GIT:
+        out.append(_GIT_TOOL)
+    if ALLOW_SYSTEM_MONITOR:
+        out.append(_SYSTEM_INFO_TOOL)
+    if ALLOW_DOCKER:
+        out.append(_DOCKER_PS_TOOL)
+        out.append(_DOCKER_EXEC_TOOL)
+    
+    # Skills (toujours disponibles)
+    out.append(_LIST_SKILLS_TOOL)
+    out.append(_EXECUTE_SKILL_TOOL)
+    
     return out
