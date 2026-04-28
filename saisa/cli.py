@@ -40,6 +40,7 @@ def main(
         _apply_model_override(provider, model)
 
     from .agent import CodingAgent
+    from .errors import SaisaError
     from .providers import get_provider
     from .ui.console import (
         console,
@@ -57,6 +58,9 @@ def main(
     # Initialise provider
     try:
         llm = get_provider(provider)
+    except SaisaError as e:
+        print_error(e.friendly())
+        sys.exit(1)
     except Exception as e:
         print_error(f"Failed to connect: {e}")
         sys.exit(1)
@@ -112,6 +116,8 @@ def main(
                 print_assistant(reply)
         except KeyboardInterrupt:
             print_info("\n[Interrupted]")
+        except SaisaError as e:
+            print_error(e.friendly())
         except Exception as e:
             print_error(f"Error: {e}")
 
