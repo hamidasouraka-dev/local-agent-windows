@@ -216,6 +216,48 @@ SAISA will:
 
 Works with any LLM provider. The better the model, the better the autonomy.
 
+### SaaS Generator
+Generate full production-ready SaaS projects with one command:
+
+```bash
+/saas my-startup fastapi
+```
+
+Generates 19+ files with:
+- JWT authentication (register, login)
+- User management with roles
+- Admin dashboard API
+- Stripe payment integration
+- Database models (SQLite/PostgreSQL)
+- Docker + docker-compose
+- Tests
+
+Also available as Express+TypeScript.
+
+### User Management & API Key Vault
+Multi-user support with secure API key storage:
+
+```bash
+/register admin mypassword admin     # Create admin account
+/login admin mypassword               # Login
+/addkey groq gsk_xxxx                 # Store API key securely
+/keys                                 # List stored keys
+```
+
+API keys auto-load on login — switch providers seamlessly.
+
+### Provider Tiers
+```bash
+/tiers
+```
+
+| Tier | Provider | Cost | Speed | Quality |
+|------|----------|------|-------|---------|
+| Free (Local) | Ollama | Free forever | Hardware-dependent | Good (7B-70B) |
+| Turbo | Groq | Free tier / Pay | ~500 tok/s | Excellent |
+| Premium | OpenAI | Pay per token | Fast | Top tier |
+| Elite | Anthropic | Pay per token | Fast | Top tier |
+
 ### Turbo Mode
 Built-in response caching and connection pooling for blazing fast inference.
 No extra config needed — always on.
