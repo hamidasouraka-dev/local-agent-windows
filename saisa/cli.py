@@ -334,6 +334,102 @@ def _handle_command(
 
         return True
 
+    if cmd == "/tiers":
+        from .tiers import list_tiers
+
+        print_info(list_tiers())
+        return True
+
+    if cmd == "/saas":
+        if not arg:
+            print_info("Usage: /saas <project-name> [stack]")
+            print_info("Stacks: fastapi (default), express")
+            print_info("Example: /saas my-startup fastapi")
+            return True
+        parts_saas = arg.split(maxsplit=1)
+        saas_name = parts_saas[0]
+        saas_stack = parts_saas[1] if len(parts_saas) > 1 else "fastapi"
+        from .tools.saas_templates import generate_saas
+        from .ui.console import console
+
+        result = generate_saas(saas_name, saas_stack)
+        data = json.loads(result)
+        if "error" in data:
+            print_error(data["error"])
+        else:
+            console.print(f"[bold green]SaaS project created![/] {data['path']}")
+            console.print(f"  Stack: {data['stack']}")
+            console.print(f"  Files: {len(data['files_created'])}")
+            for feat in data.get("features", []):
+                console.print(f"  [dim]- {feat}[/]")
+        return True
+
+    if cmd == "/register":
+        from .users import UserManager
+
+        um = UserManager()
+        parts_reg = arg.split(maxsplit=2)
+        if len(parts_reg) < 2:
+            print_error("Usage: /register <username> <password> [role]")
+            return True
+        username = parts_reg[0]
+        password = parts_reg[1]
+        role = parts_reg[2] if len(parts_reg) > 2 else "developer"
+        result = um.register(username, password, role)
+        if "error" in result:
+            print_error(result["error"])
+        else:
+            print_info(f"User '{username}' registered as {role}")
+        return True
+
+    if cmd == "/login":
+        from .users import UserManager, auto_configure_provider
+
+        um = UserManager()
+        parts_login = arg.split(maxsplit=1)
+        if len(parts_login) < 2:
+            print_error("Usage: /login <username> <password>")
+            return True
+        result = um.login(parts_login[0], parts_login[1])
+        if "error" in result:
+            print_error(result["error"])
+        else:
+            print_info(f"Logged in as {result['username']} ({result['role']})")
+            # Auto-configure API keys from vault
+            for prov in ["groq", "openai", "anthropic"]:
+                env_map = auto_configure_provider(um, prov)
+                if env_map:
+                    print_info(f"  API key loaded for {prov}")
+        return True
+
+    if cmd == "/addkey":
+        from .users import UserManager
+
+        um = UserManager()
+        parts_key = arg.split(maxsplit=1)
+        if len(parts_key) < 2:
+            print_error("Usage: /addkey <provider> <api-key>")
+            print_info("Providers: groq, openai, anthropic")
+            return True
+        result = um.add_api_key(parts_key[0], parts_key[1])
+        if "error" in result:
+            print_error(result["error"])
+        else:
+            print_info(f"API key added for {parts_key[0]}: {result['key_masked']}")
+        return True
+
+    if cmd == "/keys":
+        from .users import UserManager
+
+        um = UserManager()
+        keys = um.list_api_keys()
+        if not keys:
+            print_info("No API keys stored. Use /addkey <provider> <key>")
+        else:
+            for k in keys:
+                print_info(f"  {k['provider']}: {k['key_masked']} ({k.get('label', '')})")
+        return True
+
     print_error(f"Unknown command: {cmd}. Type /help for available commands.")
     return True
 

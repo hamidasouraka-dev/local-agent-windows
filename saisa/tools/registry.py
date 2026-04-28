@@ -405,6 +405,77 @@ def _build_catalog() -> None:
         _memory_stats,
     )
 
+    # ── SaaS Generator ──
+    from . import saas_templates
+
+    _register(
+        ToolDefinition(
+            name="generate_saas",
+            description=(
+                "Generate a full SaaS project with auth, user management, payments, "
+                "dashboard API, and database. Stacks: fastapi, express."
+            ),
+            parameters={
+                "type": "object",
+                "properties": {
+                    "name": {"type": "string", "description": "Project name."},
+                    "stack": {"type": "string", "description": "Stack: fastapi or express."},
+                    "path": {"type": "string", "description": "Parent directory."},
+                },
+                "required": ["name", "stack"],
+            },
+        ),
+        saas_templates.generate_saas,
+    )
+
+    _register(
+        ToolDefinition(
+            name="list_saas_templates",
+            description="List available SaaS project templates with features.",
+            parameters={"type": "object", "properties": {}},
+        ),
+        saas_templates.list_saas_templates,
+    )
+
+    # ── Tier info ──
+    from ..tiers import list_tiers_json, recommend_tier
+
+    def _list_tiers() -> str:
+        return list_tiers_json()
+
+    def _recommend_tier(budget: str = "free", priority: str = "balanced") -> str:
+        tier = recommend_tier(budget, priority)
+        return json.dumps({
+            "recommended": tier.name,
+            "provider": tier.provider,
+            "cost": tier.cost,
+            "description": tier.description,
+        })
+
+    _register(
+        ToolDefinition(
+            name="list_tiers",
+            description="List all available LLM provider tiers (free local to premium cloud).",
+            parameters={"type": "object", "properties": {}},
+        ),
+        _list_tiers,
+    )
+
+    _register(
+        ToolDefinition(
+            name="recommend_tier",
+            description="Recommend the best LLM provider tier based on budget and priority.",
+            parameters={
+                "type": "object",
+                "properties": {
+                    "budget": {"type": "string", "description": "Budget: free, low, unlimited."},
+                    "priority": {"type": "string", "description": "Priority: speed, quality, balanced, privacy."},
+                },
+            },
+        ),
+        _recommend_tier,
+    )
+
 
 # ── Public API ───────────────────────────────────────────────────────────
 
